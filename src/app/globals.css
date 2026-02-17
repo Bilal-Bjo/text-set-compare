@@ -111,6 +111,16 @@ body {
   outline: 1px solid var(--accent-yellow);
 }
 
+.highlight-line.editor-find-match {
+  background: rgba(220, 220, 170, 0.12) !important;
+  border-right: 2px solid rgba(220, 220, 170, 0.4);
+}
+
+.highlight-line.editor-find-active {
+  background: rgba(220, 220, 170, 0.28) !important;
+  border-right: 2px solid var(--accent-yellow);
+}
+
 .editor-textarea {
   position: relative;
   width: 100%;

@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 30000,
   expect: { timeout: 5000 },
   use: {
-    baseURL: 'http://localhost:3737',
+    baseURL: 'http://localhost:3003',
     headless: true,
   },
   projects: [

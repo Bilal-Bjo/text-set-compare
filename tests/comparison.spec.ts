@@ -252,3 +252,61 @@ test('21 - Copy button appears on result tabs', async ({ page }) => {
   await expect(page.getByTestId('copy-missing')).toBeVisible();
   await expect(page.getByTestId('copy-missing')).toContainText('Copy 2 lines');
 });
+
+test('22 - Editor search bar opens, finds matches, navigates', async ({ page }) => {
+  await page.getByTestId('editor-before').fill('Alpha\nBravo\nAlpha again\nCharlie\nAlpha third');
+
+  // Open search via toggle button
+  await page.getByTestId('search-toggle-before').click();
+  const searchInput = page.getByTestId('editor-search-before');
+  await expect(searchInput).toBeVisible();
+
+  // Type a query
+  await searchInput.fill('Alpha');
+
+  // Should show "1/3" (3 matches, first active)
+  await expect(page.getByText('1/3')).toBeVisible();
+
+  // Press Enter to go to next match
+  await searchInput.press('Enter');
+  await expect(page.getByText('2/3')).toBeVisible();
+
+  // Press Enter again
+  await searchInput.press('Enter');
+  await expect(page.getByText('3/3')).toBeVisible();
+
+  // Wraps around
+  await searchInput.press('Enter');
+  await expect(page.getByText('1/3')).toBeVisible();
+
+  // Shift+Enter goes back
+  await searchInput.press('Shift+Enter');
+  await expect(page.getByText('3/3')).toBeVisible();
+
+  // No results
+  await searchInput.fill('zzzzz');
+  await expect(page.getByText('No results')).toBeVisible();
+
+  // Close with Escape
+  await searchInput.press('Escape');
+  await expect(searchInput).not.toBeVisible();
+});
+
+test('23 - Both editors have independent search bars', async ({ page }) => {
+  await page.getByTestId('editor-before').fill('Foo\nBar\nBaz');
+  await page.getByTestId('editor-after').fill('One\nTwo\nThree');
+
+  // Open search on Before
+  await page.getByTestId('search-toggle-before').click();
+  await page.getByTestId('editor-search-before').fill('Foo');
+  await expect(page.getByText('1/1')).toBeVisible();
+
+  // Open search on After
+  await page.getByTestId('search-toggle-after').click();
+  await page.getByTestId('editor-search-after').fill('T');
+  // "T" matches "Two" and "Three"
+  await expect(page.getByText('1/2')).toBeVisible();
+
+  // Before search still shows its result
+  await expect(page.getByTestId('editor-search-before')).toHaveValue('Foo');
+});
