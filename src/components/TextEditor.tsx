@@ -26,6 +26,15 @@ function findAllMatches(text: string, query: string): number[] {
   return matches;
 }
 
+function readFileAsText(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(file);
+  });
+}
+
 export default function TextEditor({
   value,
   onChange,
@@ -40,10 +49,13 @@ export default function TextEditor({
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [displayLineCount, setDisplayLineCount] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeMatchIndex, setActiveMatchIndex] = useState(0);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
 
   const lines = value.split('\n');
   const currentLineCount = lines.length;
@@ -120,8 +132,6 @@ export default function TextEditor({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
-        // Only capture if this editor or its children are focused,
-        // or if no specific element is focused
         const container = textareaRef.current?.closest('.flex.flex-col.flex-1');
         if (container?.contains(document.activeElement) || document.activeElement === document.body) {
           // Don't prevent — let both editors potentially open
@@ -132,34 +142,151 @@ export default function TextEditor({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // File handling
+  const handleFileLoad = useCallback(async (file: File) => {
+    try {
+      const text = await readFileAsText(file);
+      onChange(text);
+    } catch {
+      // silently ignore unreadable files
+    }
+  }, [onChange]);
+
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileLoad(file);
+      // Reset so the same file can be selected again
+      e.target.value = '';
+    }
+  }, [handleFileLoad]);
+
+  // Drag and drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (dragCounterRef.current === 1) {
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current === 0) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      handleFileLoad(file);
+    }
+  }, [handleFileLoad]);
+
   const activeLineIdx = matchingLines[activeMatchIndex] ?? null;
+  const labelLower = label.toLowerCase();
 
   return (
-    <div className="flex flex-col flex-1 min-w-0">
+    <div
+      className="flex flex-col flex-1 min-w-0"
+      style={{ position: 'relative' }}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drop overlay */}
+      {isDragOver && (
+        <div
+          data-testid={`drop-zone-${labelLower}`}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 50,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(30, 30, 30, 0.85)',
+            border: '2px dashed var(--accent-blue)',
+            borderRadius: 4,
+            transition: 'opacity 0.15s ease',
+          }}
+        >
+          <span style={{ color: 'var(--accent-blue)', fontSize: 14, fontWeight: 600 }}>
+            Drop file here
+          </span>
+        </div>
+      )}
+
       <div className="flex items-center justify-between px-3 py-2" style={{ background: 'var(--bg-secondary)' }}>
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
           {label}
         </span>
-        <button
-          onClick={searchOpen ? closeSearch : openSearch}
-          className="editor-search-toggle"
-          data-testid={`search-toggle-${label.toLowerCase()}`}
-          title="Search (Ctrl+F)"
-          style={{
-            background: searchOpen ? 'var(--bg-hover)' : 'transparent',
-            border: 'none',
-            borderRadius: 4,
-            padding: '2px 6px',
-            cursor: 'pointer',
-            color: 'var(--text-secondary)',
-            display: 'flex',
-            alignItems: 'center',
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-            <path d="M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM10.9 11.6a6 6 0 1 1 .7-.7l3.8 3.8-.7.7-3.8-3.8Z" fill="currentColor"/>
-          </svg>
-        </button>
+        <div className="flex items-center gap-1">
+          <input
+            ref={fileInputRef}
+            type="file"
+            style={{ display: 'none' }}
+            onChange={handleFileInputChange}
+            accept=".txt,.csv,.json,.xml,.log,.md,.yaml,.yml,.tsv,.html,.htm,.js,.ts,.jsx,.tsx,.py,.rb,.go,.rs,.java,.c,.cpp,.h,.cfg,.ini,.toml,.env,.sql"
+          />
+          <button
+            onClick={handleUploadClick}
+            data-testid={`upload-btn-${labelLower}`}
+            title="Upload file"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              borderRadius: 4,
+              padding: '2px 6px',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M8 1v10M4 5l4-4 4 4M2 11v2a2 2 0 002 2h8a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <button
+            onClick={searchOpen ? closeSearch : openSearch}
+            className="editor-search-toggle"
+            data-testid={`search-toggle-${labelLower}`}
+            title="Search (Ctrl+F)"
+            style={{
+              background: searchOpen ? 'var(--bg-hover)' : 'transparent',
+              border: 'none',
+              borderRadius: 4,
+              padding: '2px 6px',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <path d="M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM10.9 11.6a6 6 0 1 1 .7-.7l3.8 3.8-.7.7-3.8-3.8Z" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {searchOpen && (
@@ -177,7 +304,7 @@ export default function TextEditor({
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             placeholder="Find..."
-            data-testid={`editor-search-${label.toLowerCase()}`}
+            data-testid={`editor-search-${labelLower}`}
             className="flex-1 text-xs bg-transparent outline-none"
             style={{
               color: 'var(--text-primary)',
@@ -289,11 +416,11 @@ export default function TextEditor({
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
             spellCheck={false}
-            data-testid={`editor-${label.toLowerCase()}`}
+            data-testid={`editor-${labelLower}`}
           />
         </div>
       </div>
-      <div className="px-3 py-1 text-xs" style={{ color: 'var(--text-muted)' }} data-testid={`linecount-${label.toLowerCase()}`}>
+      <div className="px-3 py-1 text-xs" style={{ color: 'var(--text-muted)' }} data-testid={`linecount-${labelLower}`}>
         {lineCount} line{lineCount !== 1 ? 's' : ''}{value ? ` (${uniqueCount} unique)` : ''}
       </div>
     </div>

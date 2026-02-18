@@ -8,8 +8,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Text Set Compare",
-  description: "Compare two blocks of text by set membership - find what's missing, added, or shared",
+  title: "SetDiff — Set-based XML & text comparison",
+  description: "Cut through noisy diffs. Set-based comparison for Salesforce metadata, XML files, and plain text. See what actually changed, not what moved.",
 };
 
 export default function RootLayout({

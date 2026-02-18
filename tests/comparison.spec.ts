@@ -310,3 +310,166 @@ test('23 - Both editors have independent search bars', async ({ page }) => {
   // Before search still shows its result
   await expect(page.getByTestId('editor-search-before')).toHaveValue('Foo');
 });
+
+// --- XML Mode Tests ---
+
+const SF_PROFILE_BEFORE = `<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Account.Name</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>Account.Phone</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Contact.Email</field>
+        <readable>true</readable>
+    </fieldPermissions>
+</Profile>`;
+
+const SF_PROFILE_AFTER = `<?xml version="1.0" encoding="UTF-8"?>
+<Profile xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>Account.Name</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>false</editable>
+        <field>Account.Phone</field>
+        <readable>true</readable>
+    </fieldPermissions>
+    <fieldPermissions>
+        <editable>true</editable>
+        <field>Contact.LastName</field>
+        <readable>true</readable>
+    </fieldPermissions>
+</Profile>`;
+
+test('24 - XML auto-detection switches to XML mode', async ({ page }) => {
+  await page.getByTestId('editor-before').fill(SF_PROFILE_BEFORE);
+  await page.getByTestId('editor-after').fill(SF_PROFILE_AFTER);
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  // Auto mode should detect XML and show "(XML)" indicator
+  await expect(page.getByTestId('mode-auto')).toContainText('XML');
+
+  // XML results panel should be visible with Summary tab
+  await expect(page.getByTestId('xml-tab-summary')).toBeVisible();
+  await expect(page.getByTestId('xml-tab-modified')).toBeVisible();
+  await expect(page.getByTestId('xml-tab-removed')).toBeVisible();
+  await expect(page.getByTestId('xml-tab-added')).toBeVisible();
+});
+
+test('25 - XML mode shows correct stats for SF profile', async ({ page }) => {
+  await page.getByTestId('editor-before').fill(SF_PROFILE_BEFORE);
+  await page.getByTestId('editor-after').fill(SF_PROFILE_AFTER);
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  // Account.Name: editable changed true→false = modified
+  // Account.Phone: unchanged
+  // Contact.Email: removed (not in after)
+  // Contact.LastName: added (not in before)
+  await expect(page.getByTestId('xml-stat-unchanged')).toContainText('1');
+  await expect(page.getByTestId('xml-stat-modified')).toContainText('1');
+  await expect(page.getByTestId('xml-stat-removed')).toContainText('1');
+  await expect(page.getByTestId('xml-stat-added')).toContainText('1');
+});
+
+test('26 - XML modified tab shows field-level changes', async ({ page }) => {
+  await page.getByTestId('editor-before').fill(SF_PROFILE_BEFORE);
+  await page.getByTestId('editor-after').fill(SF_PROFILE_AFTER);
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  await page.getByTestId('xml-tab-modified').click();
+  // Account.Name was modified (editable: true → false)
+  // Use specific locators to avoid matching textarea content
+  const resultsArea = page.locator('[style*="border-top"]');
+  await expect(resultsArea.locator('.font-medium', { hasText: 'Account.Name' })).toBeVisible();
+  await expect(resultsArea.getByText('editable:')).toBeVisible();
+});
+
+test('27 - XML removed tab shows removed element', async ({ page }) => {
+  await page.getByTestId('editor-before').fill(SF_PROFILE_BEFORE);
+  await page.getByTestId('editor-after').fill(SF_PROFILE_AFTER);
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  await page.getByTestId('xml-tab-removed').click();
+  const resultsArea = page.locator('[style*="border-top"]');
+  await expect(resultsArea.locator('.font-medium', { hasText: 'Contact.Email' })).toBeVisible();
+});
+
+test('28 - XML added tab shows new element', async ({ page }) => {
+  await page.getByTestId('editor-before').fill(SF_PROFILE_BEFORE);
+  await page.getByTestId('editor-after').fill(SF_PROFILE_AFTER);
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  await page.getByTestId('xml-tab-added').click();
+  const resultsArea = page.locator('[style*="border-top"]');
+  await expect(resultsArea.locator('.font-medium', { hasText: 'Contact.LastName' })).toBeVisible();
+});
+
+test('29 - Mode toggle overrides auto-detection', async ({ page }) => {
+  await page.getByTestId('editor-before').fill(SF_PROFILE_BEFORE);
+  await page.getByTestId('editor-after').fill(SF_PROFILE_AFTER);
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  // Should be in XML mode (auto-detected)
+  await expect(page.getByTestId('xml-tab-summary')).toBeVisible();
+
+  // Force TEXT mode
+  await page.getByTestId('mode-text').click();
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  // Should now show text mode results (Summary tab from ResultsPanel)
+  await expect(page.getByTestId('tab-summary')).toBeVisible();
+  // XML tabs should be gone
+  await expect(page.getByTestId('xml-tab-summary')).not.toBeVisible();
+
+  // Force back to XML mode
+  await page.getByTestId('mode-xml').click();
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  await expect(page.getByTestId('xml-tab-summary')).toBeVisible();
+});
+
+test('30 - XML identical files show green checkmark', async ({ page }) => {
+  await page.getByTestId('editor-before').fill(SF_PROFILE_BEFORE);
+  await page.getByTestId('editor-after').fill(SF_PROFILE_BEFORE);
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  await expect(page.getByTestId('xml-status-ok')).toBeVisible();
+  await expect(page.getByText('Nothing lost')).toBeVisible();
+});
+
+test('31 - File upload button exists for both editors', async ({ page }) => {
+  await expect(page.getByTestId('upload-btn-before')).toBeVisible();
+  await expect(page.getByTestId('upload-btn-after')).toBeVisible();
+});
+
+test('32 - History button and dropdown', async ({ page }) => {
+  await expect(page.getByTestId('history-btn')).toBeVisible();
+
+  // Click opens dropdown
+  await page.getByTestId('history-btn').click();
+  await expect(page.getByTestId('history-dropdown')).toBeVisible();
+  await expect(page.getByText('No history yet')).toBeVisible();
+
+  // Escape closes
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('history-dropdown')).not.toBeVisible();
+});
+
+test('33 - XML summary shows SF type breakdown', async ({ page }) => {
+  await page.getByTestId('editor-before').fill(SF_PROFILE_BEFORE);
+  await page.getByTestId('editor-after').fill(SF_PROFILE_AFTER);
+  await page.waitForTimeout(DEBOUNCE_WAIT);
+
+  // Should show "Field Permissions" type breakdown
+  await expect(page.getByText('Field Permissions')).toBeVisible();
+});

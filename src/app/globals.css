@@ -190,6 +190,11 @@ body {
   color: #fff;
 }
 
+.badge-orange {
+  background: #ce9178;
+  color: #fff;
+}
+
 .badge-gray {
   background: var(--bg-hover);
   color: var(--text-secondary);
